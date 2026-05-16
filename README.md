@@ -1,44 +1,36 @@
 # Nexus404
 
-## Description
-Nexus404 is an autonomous multi-agent system built on .NET 9 and Python. It features a distributed architecture powered by NATS messaging, integrating various AI providers and capabilities including web scraping, document parsing, and Google Workspace integration.
+Un middleware modulaire basé sur l'IA qui intercepte les erreurs 404, analyse l'intention de l'utilisateur et la structure du site, et génère dynamiquement des redirections sémantiques ou du contenu de secours personnalisé.
+
+## Fonctionnalités
+
+- **Interception 404** : Détecte les ressources manquantes en temps réel.
+- **Analyse Sémantique** : Utilise l'IA pour comprendre ce que l'utilisateur cherchait.
+- **Redirection Dynamique** : Suggère ou redirige automatiquement vers la page la plus proche.
+- **Contenu de Secours** : Génère une page 404 personnalisée et utile si aucune redirection n'est possible.
 
 ## Architecture
-- **Mira.API**: Main entry point and REST API.
-- **Mira.Core**: Shared entities, domain models, and infrastructure abstractions.
-- **Mira.Agents**: AI agent definitions and behaviors.
-- **Mira.Missions**: Mission orchestration and lifecycle management.
 
-## Integration & Capabilities
-- **Messaging**: NATS messaging for high-performance communication between agents.
-- **Data Storage**: PostgreSQL and SQLite via Entity Framework Core.
-- **LLM Integration**: Support for OpenAI and Anthropic models.
-- **Browser Automation**: PuppeteerSharp for headless browser control and scraping.
-- **Document Processing**: PdfPig for PDF document analysis and HtmlAgilityPack for DOM manipulation.
-- **Google Workspace**: Native integration with Google Auth, Calendar, Drive, and Gmail APIs.
+- **Nexus404.Middleware** : Le composant .NET à intégrer dans votre pipeline ASP.NET Core.
+- **Nexus404.AiService** : Service Python gérant l'intelligence et l'analyse de structure.
+- **Nexus404.DemoApp** : Exemple d'intégration.
 
-## Installation
+## Installation (.NET)
 
-### Prerequisites
-- .NET 9 SDK
-- Python 3.11+
-- PostgreSQL
-- NATS Server
+Ajoutez le middleware à votre projet :
 
-### Setup
-1. Ensure the NATS server and PostgreSQL services are running on the system.
-2. Configure the required environment variables:
-   - `DB_CONNECTION_STRING`
-   - `NATS_URL`
-   - `OPENAI_ENDPOINT`
-   - `ANTHROPIC_ENDPOINT`
+```csharp
+app.UseMiddleware<Nexus404Middleware>();
+```
 
-3. Restore .NET dependencies:
-   dotnet restore
+## Configuration (Python AI Service)
 
-4. Build the project:
-   dotnet build --configuration Release
+```bash
+cd Nexus404.AiService
+pip install -r requirements.txt
+python main.py
+```
 
-5. Run the main API service:
-   dotnet run --project Mira.API --configuration Release
-[WARNING] --raw-output is enabled. Model output is not sanitized and may contain harmful ANSI sequences (e.g. for phishing or command injection). Use --accept-raw-output-risk to suppress this warning.
+## Contributing
+
+Merci de contribuer ! Veuillez suivre les standards habituels.
