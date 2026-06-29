@@ -4,7 +4,9 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nexus404.Middleware.Interfaces;
 using Nexus404.Middleware.Models;
 using Nexus404.Middleware.Services;
 using Xunit;
@@ -15,138 +17,103 @@ public class PythonInteropServiceTests
 {
     private class MockHttpMessageHandler : HttpMessageHandler
     {
-        private readonly HttpResponseMessage _responseMessage;
-        private readonly Exception _exceptionToThrow;
+        private readonly HttpResponseMessage? _responseMessage;
+        private readonly Exception? _exceptionToThrow;
 
         public MockHttpMessageHandler(HttpResponseMessage responseMessage)
         {
             _responseMessage = responseMessage;
-            _exceptionToThrow = null!;
         }
 
         public MockHttpMessageHandler(Exception exceptionToThrow)
         {
             _exceptionToThrow = exceptionToThrow;
-            _responseMessage = null!;
         }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (_exceptionToThrow != null)
-            {
                 throw _exceptionToThrow;
-            }
 
-            return Task.FromResult(_responseMessage);
+            return Task.FromResult(_responseMessage!);
         }
     }
 
-    [Fact]
-    public async Task AnalyzeErrorAsync_ShouldReturnFallbackResult_WhenApiCallIsSuccessful()
+    private static PythonInteropService CreateService(HttpClient httpClient)
     {
-        var expectedResult = new FallbackResult
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Nexus404:PythonServiceUrl"] = "http://localhost:8000"
+            })
+            .Build();
+
+        return new PythonInteropService(httpClient, config, NullLogger<PythonInteropService>.Instance);
+    }
+
+    [Fact]
+    public async Task AnalyzeMissingPathAsync_ReturnsFallbackResult_WhenApiCallSucceeds()
+    {
+        var expected = new FallbackResult
         {
-            SuggestedAction = "ClearCache",
-            Confidence = 0.99
+            ActionType = FallbackAction.Redirect,
+            SuggestedUrl = "/home",
+            ConfidenceScore = 0.95
         };
 
         var response = new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = new StringContent(JsonSerializer.Serialize(expectedResult))
+            Content = new StringContent(JsonSerializer.Serialize(expected))
         };
 
         var httpClient = new HttpClient(new MockHttpMessageHandler(response))
         {
-            BaseAddress = new Uri("http://localhost:5000/")
+            BaseAddress = new Uri("http://localhost:8000/")
         };
 
-        var logger = NullLogger<PythonInteropService>.Instance;
-        var service = new PythonInteropService(httpClient, logger);
+        var service = CreateService(httpClient);
+        var request = new AnalysisRequest { AttemptedUrl = "/old-page", Method = "GET" };
 
-        var request = new AnalysisRequest
-        {
-            ErrorMessage = "Cache miss",
-            StatusCode = 404
-        };
-
-        var result = await service.AnalyzeErrorAsync(request);
+        var result = await service.AnalyzeMissingPathAsync(request);
 
         Assert.NotNull(result);
-        Assert.Equal(expectedResult.SuggestedAction, result.SuggestedAction);
-        Assert.Equal(expectedResult.Confidence, result.Confidence);
+        Assert.Equal(FallbackAction.Redirect, result.ActionType);
+        Assert.Equal("/home", result.SuggestedUrl);
     }
 
     [Fact]
-    public async Task AnalyzeErrorAsync_ShouldReturnNull_WhenApiCallFails()
+    public async Task AnalyzeMissingPathAsync_ReturnsDefault_WhenApiCallFails()
     {
         var response = new HttpResponseMessage(HttpStatusCode.InternalServerError);
-
         var httpClient = new HttpClient(new MockHttpMessageHandler(response))
         {
-            BaseAddress = new Uri("http://localhost:5000/")
+            BaseAddress = new Uri("http://localhost:8000/")
         };
 
-        var logger = NullLogger<PythonInteropService>.Instance;
-        var service = new PythonInteropService(httpClient, logger);
+        var service = CreateService(httpClient);
+        var request = new AnalysisRequest { AttemptedUrl = "/fail" };
 
-        var request = new AnalysisRequest
-        {
-            ErrorMessage = "Database timeout",
-            StatusCode = 500
-        };
+        var result = await service.AnalyzeMissingPathAsync(request);
 
-        var result = await service.AnalyzeErrorAsync(request);
-
-        Assert.Null(result);
+        Assert.NotNull(result);
+        Assert.Equal(FallbackAction.None, result.ActionType);
+        Assert.Equal(0.0, result.ConfidenceScore);
     }
 
     [Fact]
-    public async Task AnalyzeErrorAsync_ShouldReturnNull_WhenExceptionIsThrown()
+    public async Task AnalyzeMissingPathAsync_ReturnsDefault_OnHttpRequestException()
     {
         var httpClient = new HttpClient(new MockHttpMessageHandler(new HttpRequestException("Network failure")))
         {
-            BaseAddress = new Uri("http://localhost:5000/")
+            BaseAddress = new Uri("http://localhost:8000/")
         };
 
-        var logger = NullLogger<PythonInteropService>.Instance;
-        var service = new PythonInteropService(httpClient, logger);
+        var service = CreateService(httpClient);
+        var request = new AnalysisRequest { AttemptedUrl = "/error" };
 
-        var request = new AnalysisRequest
-        {
-            ErrorMessage = "Service unavailable",
-            StatusCode = 503
-        };
+        var result = await service.AnalyzeMissingPathAsync(request);
 
-        var result = await service.AnalyzeErrorAsync(request);
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task AnalyzeErrorAsync_ShouldReturnNull_WhenResponseIsInvalidJson()
-    {
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent("Invalid JSON format")
-        };
-
-        var httpClient = new HttpClient(new MockHttpMessageHandler(response))
-        {
-            BaseAddress = new Uri("http://localhost:5000/")
-        };
-
-        var logger = NullLogger<PythonInteropService>.Instance;
-        var service = new PythonInteropService(httpClient, logger);
-
-        var request = new AnalysisRequest
-        {
-            ErrorMessage = "Parsing error",
-            StatusCode = 400
-        };
-
-        var result = await service.AnalyzeErrorAsync(request);
-
-        Assert.Null(result);
+        Assert.NotNull(result);
+        Assert.Equal(FallbackAction.None, result.ActionType);
     }
 }
-[WARNING] --raw-output is enabled. Model output is not sanitized and may contain harmful ANSI sequences (e.g. for phishing or command injection). Use --accept-raw-output-risk to suppress this warning.

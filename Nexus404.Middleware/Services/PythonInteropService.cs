@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Nexus404.Middleware.Interfaces;
+using Nexus404.Middleware.Models;
 
 namespace Nexus404.Middleware.Services;
 
@@ -19,32 +20,29 @@ public class PythonInteropService : IAiAnalysisService
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        var pythonApiUrl = configuration["PYTHON_API_URL"] ?? Environment.GetEnvironmentVariable("PYTHON_API_URL") ?? "http://localhost:5000";
+        var pythonApiUrl = configuration["Nexus404:PythonServiceUrl"]
+            ?? Environment.GetEnvironmentVariable("NEXUS404_PYTHON_URL")
+            ?? "http://localhost:8000";
         _httpClient.BaseAddress = new Uri(pythonApiUrl);
     }
 
-    public async Task<string> GetRecommendationAsync(string errorDetails, CancellationToken cancellationToken = default)
+    public async Task<FallbackResult> AnalyzeMissingPathAsync(AnalysisRequest request, CancellationToken cancellationToken = default)
     {
         try
         {
-            var requestData = new { error = errorDetails };
-            var response = await _httpClient.PostAsJsonAsync("/api/recommendations", requestData, cancellationToken);
-            
+            var response = await _httpClient.PostAsJsonAsync("/api/analyze", request, cancellationToken);
             response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<PythonRecommendationResponse>(cancellationToken: cancellationToken);
-            return result?.Recommendation ?? string.Empty;
+            var result = await response.Content.ReadFromJsonAsync<FallbackResult>(cancellationToken: cancellationToken);
+            return result ?? new FallbackResult();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error occurred while requesting recommendations from the Python API.");
-            throw;
+            _logger.LogError(ex, "Error calling Python AI service for path: {Path}", request.AttemptedUrl);
+            return new FallbackResult
+            {
+                ActionType = FallbackAction.None,
+                ConfidenceScore = 0.0
+            };
         }
     }
-
-    private class PythonRecommendationResponse
-    {
-        public string? Recommendation { get; set; }
-    }
 }
-[WARNING] --raw-output is enabled. Model output is not sanitized and may contain harmful ANSI sequences (e.g. for phishing or command injection). Use --accept-raw-output-risk to suppress this warning.

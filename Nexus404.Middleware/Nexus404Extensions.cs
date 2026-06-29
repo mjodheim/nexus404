@@ -1,7 +1,8 @@
 using System;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Nexus404.Middleware.Interfaces;
+using Nexus404.Middleware.Services;
 
 namespace Nexus404.Middleware;
 
@@ -10,6 +11,9 @@ public static class Nexus404Extensions
     public static IServiceCollection AddNexus404(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+
+        services.AddHttpClient<IAiAnalysisService, PythonInteropService>();
+
         return services;
     }
 
@@ -17,16 +21,6 @@ public static class Nexus404Extensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return builder.Use(async (context, next) =>
-        {
-            await next(context);
-
-            if (context.Response.StatusCode == StatusCodes.Status404NotFound && !context.Response.HasStarted)
-            {
-                context.Response.ContentType = "application/json";
-                await context.Response.WriteAsync("{\"error\":\"Resource not found\",\"statusCode\":404}");
-            }
-        });
+        return builder.UseMiddleware<Nexus404Middleware>();
     }
 }
-[WARNING] --raw-output is enabled. Model output is not sanitized and may contain harmful ANSI sequences (e.g. for phishing or command injection). Use --accept-raw-output-risk to suppress this warning.

@@ -24,4 +24,3 @@ public class FallbackResult
     [JsonPropertyName("confidenceScore")]
     public double ConfidenceScore { get; set; }
 }
-[WARNING] --raw-output is enabled. Model output is not sanitized and may contain harmful ANSI sequences (e.g. for phishing or command injection). Use --accept-raw-output-risk to suppress this warning.

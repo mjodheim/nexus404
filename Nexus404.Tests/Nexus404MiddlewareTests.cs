@@ -1,6 +1,7 @@
 using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Nexus404.Middleware;
 using Nexus404.Middleware.Interfaces;
@@ -11,11 +12,17 @@ namespace Nexus404.Tests;
 
 public class Nexus404MiddlewareTests
 {
+    private static Nexus404Middleware CreateMiddleware(RequestDelegate next, IAiAnalysisService? analysisService = null)
+    {
+        analysisService ??= Mock.Of<IAiAnalysisService>();
+        return new Nexus404Middleware(next, analysisService, NullLogger<Nexus404Middleware>.Instance);
+    }
+
     [Fact]
     public async Task InvokeAsync_ContinuesPipeline_WhenStatusCodeIsNot404()
     {
         var analysisServiceMock = new Mock<IAiAnalysisService>();
-        var middleware = new Nexus404Middleware(
+        var middleware = CreateMiddleware(
             async context =>
             {
                 context.Response.StatusCode = (int)HttpStatusCode.OK;
@@ -28,17 +35,18 @@ public class Nexus404MiddlewareTests
         await middleware.InvokeAsync(context);
 
         Assert.Equal((int)HttpStatusCode.OK, context.Response.StatusCode);
-        analysisServiceMock.Verify(x => x.AnalyzeMissingPathAsync(It.IsAny<AnalysisRequest>()), Times.Never);
+        analysisServiceMock.Verify(x => x.AnalyzeMissingPathAsync(It.IsAny<AnalysisRequest>(), default), Times.Never);
     }
 
     [Fact]
     public async Task InvokeAsync_InterceptsAndAnalyzes_WhenStatusCodeIs404()
     {
         var analysisServiceMock = new Mock<IAiAnalysisService>();
-        analysisServiceMock.Setup(x => x.AnalyzeMissingPathAsync(It.IsAny<AnalysisRequest>()))
-            .ReturnsAsync(default(FallbackResult));
+        analysisServiceMock
+            .Setup(x => x.AnalyzeMissingPathAsync(It.IsAny<AnalysisRequest>(), default))
+            .ReturnsAsync(new FallbackResult());
 
-        var middleware = new Nexus404Middleware(
+        var middleware = CreateMiddleware(
             async context =>
             {
                 context.Response.StatusCode = (int)HttpStatusCode.NotFound;
@@ -49,10 +57,9 @@ public class Nexus404MiddlewareTests
 
         var context = new DefaultHttpContext();
         context.Request.Path = "/not-found-page";
-        
+
         await middleware.InvokeAsync(context);
 
-        analysisServiceMock.Verify(x => x.AnalyzeMissingPathAsync(It.IsAny<AnalysisRequest>()), Times.Once);
+        analysisServiceMock.Verify(x => x.AnalyzeMissingPathAsync(It.IsAny<AnalysisRequest>(), default), Times.Once);
     }
 }
-[WARNING] --raw-output is enabled. Model output is not sanitized and may contain harmful ANSI sequences (e.g. for phishing or command injection). Use --accept-raw-output-risk to suppress this warning.
